@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="A beautiful daily task manager to organize your life" />
+  <title>TaskFlow | Daily Task Manager</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app-container">
+    <!-- Header with App Controls -->
+    <header class="app-header">
+      <div class="header-content">
+        <h1>
+          <i class="fas fa-tasks"></i>
+          <span>TaskFlow</span>
+        </h1>
+        <div class="header-actions">
+          <button id="themeToggle" class="icon-btn" aria-label="Toggle theme">
+            <i class="fas fa-moon"></i>
+          </button>
+          <button id="statsBtn" class="icon-btn" aria-label="View statistics">
+            <i class="fas fa-chart-pie"></i>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main App Content -->
+    <main class="main-content">
+      <!-- Task Filter Controls -->
+      <nav class="task-filters">
+        <div class="filter-buttons">
+          <button class="filter-btn active" data-filter="all">
+            <i class="fas fa-layer-group"></i> All
+          </button>
+          <button class="filter-btn" data-filter="pending">
+            <i class="fas fa-clock"></i> Pending
+          </button>
+          <button class="filter-btn" data-filter="completed">
+            <i class="fas fa-check-circle"></i> Completed
+          </button>
+        </div>
+        <div class="search-box">
+          <i class="fas fa-search"></i>
+          <input type="text" placeholder="Search tasks..." id="taskSearch" />
+        </div>
+      </nav>
+
+      <!-- Task List -->
+      <section class="task-list-section">
+        <div class="task-list-header">
+          <h2>Today's Tasks</h2>
+          <span class="task-count" id="taskCounter">0 tasks</span>
+        </div>
+        
+        <ul id="taskList" class="task-list" aria-live="polite">
+          <!-- Tasks will be injected here -->
+          <li class="empty-state">
+            <i class="fas fa-clipboard-list"></i>
+            <p>No tasks yet. Add your first task!</p>
+          </li>
+        </ul>
+      </section>
+    </main>
+
+    <!-- Floating Action Button -->
+    <button id="addTaskBtn" class="fab" aria-label="Add new task">
+      <i class="fas fa-plus"></i>
+    </button>
+
+    <!-- Add/Edit Task Modal -->
+    <dialog id="taskModal" class="modal">
+      <form id="taskForm" class="modal-form">
+        <div class="modal-header">
+          <h2 id="modalTitle">Add New Task</h2>
+          <button type="button" id="closeModalBtn" class="icon-btn close-btn" aria-label="Close modal">
+            <i class="fas fa-times"></i>
+          </button>
+        </div>
+        
+        <div class="form-group">
+          <label for="taskTitle">Task Title</label>
+          <input type="text" id="taskTitle" placeholder="What needs to be done?" required />
+        </div>
+        
+        <div class="form-row">
+          <div class="form-group">
+            <label for="taskDueDate"><i class="far fa-calendar-alt"></i> Due Date</label>
+            <input type="datetime-local" id="taskDueDate" />
+          </div>
+          
+          <div class="form-group">
+            <label for="taskPriority"><i class="fas fa-exclamation-circle"></i> Priority</label>
+            <div class="priority-selector">
+              <button type="button" class="priority-option low" data-value="low">
+                Low
+              </button>
+              <button type="button" class="priority-option medium active" data-value="medium">
+                Medium
+              </button>
+              <button type="button" class="priority-option high" data-value="high">
+                High
+              </button>
+            </div>
+            <input type="hidden" id="taskPriority" value="medium" />
+          </div>
+        </div>
+        
+        <div class="form-group">
+          <label for="taskNotes"><i class="far fa-edit"></i> Notes</label>
+          <textarea id="taskNotes" rows="3" placeholder="Additional details..."></textarea>
+        </div>
+        
+        <div class="form-actions">
+          <button type="button" id="cancelBtn" class="btn secondary">Cancel</button>
+          <button type="submit" class="btn primary">Save Task</button>
+        </div>
+      </form>
+    </dialog>
+
+    <!-- Delete Confirmation Modal -->
+    <dialog id="confirmModal" class="modal">
+      <div class="modal-content compact">
+        <div class="modal-icon warning">
+          <i class="fas fa-exclamation-triangle"></i>
+        </div>
+        <h3>Delete Task?</h3>
+        <p>This action cannot be undone. Are you sure?</p>
+        <div class="modal-actions">
+          <button id="cancelDelete" class="btn secondary">Cancel</button>
+          <button id="confirmDelete" class="btn danger">Delete</button>
+        </div>
+      </div>
+    </dialog>
+
+    <!-- Status Toast Notification -->
+    <div id="toast" class="toast" aria-live="assertive"></div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>

@@ -21,13 +21,27 @@ document.addEventListener("DOMContentLoaded", () => {
   let tasks = JSON.parse(localStorage.getItem("tasks")) || [];
   let currentFilter = "all";
   let taskToDelete = null;
+  let lastDeletedTask = null;
+  let undoTimeout = null;
 
   // Initialize
+  ensureTaskIds();
   renderTasks();
   applyTheme();
   setupEventListeners();
 
-  // Functions
+  // Core Functions
+  function ensureTaskIds() {
+    let needsUpdate = false;
+    tasks.forEach(task => {
+      if (!task.id) {
+        task.id = Date.now().toString();
+        needsUpdate = true;
+      }
+    });
+    if (needsUpdate) saveTasks();
+  }
+
   function setupEventListeners() {
     // Task Modals
     addTaskBtn.addEventListener("click", () => openTaskModal());
@@ -70,7 +84,7 @@ document.addEventListener("DOMContentLoaded", () => {
   function renderTasks() {
     const searchTerm = taskSearch.value.toLowerCase();
 
-    // Filter tasks based on current filter and search term
+    // Filter tasks
     let filteredTasks = tasks.filter((task) => {
       const matchesFilter =
         currentFilter === "all" ||
@@ -99,9 +113,10 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
+    // Render tasks
     taskList.innerHTML = filteredTasks
       .map(
-        (task, index) => `
+        (task) => `
       <li class="task-item ${task.completed ? "completed" : ""}" data-id="${
           task.id
         }">
@@ -142,41 +157,202 @@ document.addEventListener("DOMContentLoaded", () => {
       )
       .join("");
 
-    // Add event listeners to dynamically created elements
-    document.querySelectorAll(".task-checkbox").forEach((checkbox, index) => {
-      checkbox.addEventListener("change", () =>
-        toggleTaskComplete(filteredTasks[index].id)
-      );
-    });
+    // Add event listeners to tasks
+    setupTaskEventListeners();
+  }
 
-    document.querySelectorAll(".delete-btn").forEach((btn, index) => {
-      btn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        showDeleteConfirmation(filteredTasks[index].id);
+  function setupTaskEventListeners() {
+    // Checkbox toggle
+    document.querySelectorAll(".task-checkbox").forEach((checkbox) => {
+      checkbox.addEventListener("change", (e) => {
+        const taskId = e.target.closest(".task-item").dataset.id;
+        toggleTaskComplete(taskId);
       });
     });
 
-    document.querySelectorAll(".edit-btn").forEach((btn, index) => {
+    // Delete buttons
+    document.querySelectorAll(".delete-btn").forEach((btn) => {
       btn.addEventListener("click", (e) => {
         e.stopPropagation();
-        openTaskModal(filteredTasks[index].id);
+        const taskId = e.target.closest(".task-item").dataset.id;
+        showDeleteConfirmation(taskId);
       });
     });
 
-    // Add click handler for the entire task item
-    document.querySelectorAll(".task-item").forEach((item, index) => {
+    // Edit buttons
+    document.querySelectorAll(".edit-btn").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const taskId = e.target.closest(".task-item").dataset.id;
+        openTaskModal(taskId);
+      });
+    });
+
+    // Task item click
+    document.querySelectorAll(".task-item").forEach((item) => {
       item.addEventListener("click", (e) => {
         if (
           !e.target.classList.contains("delete-btn") &&
           !e.target.classList.contains("edit-btn") &&
           !e.target.classList.contains("task-checkbox")
         ) {
-          openTaskModal(filteredTasks[index].id);
+          const taskId = e.currentTarget.dataset.id;
+          openTaskModal(taskId);
         }
       });
     });
   }
 
+  // Task Operations
+  function showDeleteConfirmation(taskId) {
+    if (tasks.some(task => task.id === taskId)) {
+      taskToDelete = taskId;
+      confirmModal.showModal();
+    } else {
+      showToast("Task not found");
+    }
+  }
+
+  function confirmDelete() {
+    if (!taskToDelete) return;
+    
+    const deletedTask = tasks.find(task => task.id === taskToDelete);
+    if (!deletedTask) return;
+    
+    tasks = tasks.filter(task => task.id !== taskToDelete);
+    saveTasks();
+    renderTasks();
+    
+    vibrate();
+    showUndoToast("Task deleted", deletedTask);
+    
+    taskToDelete = null;
+    confirmModal.close();
+  }
+
+  function showUndoToast(message, task) {
+    clearTimeout(undoTimeout);
+    lastDeletedTask = task;
+    
+    const toastElement = document.createElement("div");
+    toastElement.className = "undo-toast show";
+    toastElement.innerHTML = `
+      <span>${message}</span>
+      <button id="undoDelete">Undo</button>
+    `;
+    
+    document.querySelectorAll(".undo-toast").forEach(el => el.remove());
+    document.body.appendChild(toastElement);
+    
+    document.getElementById("undoDelete").addEventListener("click", () => {
+      undoDelete();
+      toastElement.remove();
+    });
+    
+    undoTimeout = setTimeout(() => {
+      toastElement.remove();
+      lastDeletedTask = null;
+    }, 5000);
+  }
+
+  function undoDelete() {
+    if (lastDeletedTask) {
+      tasks.unshift(lastDeletedTask);
+      saveTasks();
+      renderTasks();
+      showToast("Task restored");
+      lastDeletedTask = null;
+      window.scrollTo(0, 0);
+    }
+  }
+
+  function toggleTaskComplete(taskId) {
+    const taskIndex = tasks.findIndex((t) => t.id === taskId);
+    if (taskIndex !== -1) {
+      tasks[taskIndex].completed = !tasks[taskIndex].completed;
+      saveTasks();
+      renderTasks();
+      showToast(
+        `Task marked as ${tasks[taskIndex].completed ? "completed" : "pending"}`
+      );
+    }
+  }
+
+  // Modal Functions
+  function openTaskModal(taskId = null) {
+    if (taskId) {
+      const task = tasks.find((t) => t.id === taskId);
+      if (task) {
+        document.getElementById("taskTitle").value = task.title;
+        document.getElementById("taskDueDate").value = task.dueDate 
+          ? new Date(task.dueDate).toISOString().slice(0, 16) 
+          : "";
+        document.getElementById("taskPriority").value = task.priority;
+        document.getElementById("taskNotes").value = task.notes || "";
+        document.getElementById("modalTitle").textContent = "Edit Task";
+        taskModal.dataset.taskId = taskId;
+
+        priorityOptions.forEach((opt) => opt.classList.remove("active"));
+        document
+          .querySelector(`.priority-option[data-value="${task.priority}"]`)
+          .classList.add("active");
+      }
+    } else {
+      taskForm.reset();
+      document.getElementById("modalTitle").textContent = "Add New Task";
+      delete taskModal.dataset.taskId;
+    }
+
+    taskModal.showModal();
+    document.getElementById("taskTitle").focus();
+  }
+
+  function closeTaskModal() {
+    taskModal.close();
+  }
+
+  function handleTaskSubmit(e) {
+    e.preventDefault();
+
+    const title = document.getElementById("taskTitle").value.trim();
+    const dueDate = document.getElementById("taskDueDate").value;
+    const priority = document.getElementById("taskPriority").value;
+    const notes = document.getElementById("taskNotes").value.trim();
+
+    if (!title) {
+      showToast("Task title is required");
+      return;
+    }
+
+    const taskData = {
+      id: taskModal.dataset.taskId || Date.now().toString(),
+      title,
+      dueDate: dueDate ? new Date(dueDate).toISOString() : "",
+      priority,
+      notes,
+      completed: false,
+      createdAt: new Date().toISOString(),
+    };
+
+    const existingTaskIndex = tasks.findIndex(
+      (t) => t.id === taskModal.dataset.taskId
+    );
+
+    if (existingTaskIndex !== -1) {
+      taskData.completed = tasks[existingTaskIndex].completed;
+      tasks[existingTaskIndex] = taskData;
+      showToast("Task updated successfully");
+    } else {
+      tasks.unshift(taskData);
+      showToast("Task added successfully");
+    }
+
+    saveTasks();
+    closeTaskModal();
+    renderTasks();
+  }
+
+  // Helper Functions
   function updateTaskCounter(count) {
     taskCounter.textContent = `${count} ${count === 1 ? "task" : "tasks"}`;
   }
@@ -208,122 +384,27 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  function openTaskModal(taskId = null) {
-    if (taskId) {
-      // Editing existing task
-      const task = tasks.find((t) => t.id === taskId);
-      document.getElementById("taskTitle").value = task.title;
-      document.getElementById("taskDueDate").value = task.dueDate || "";
-      document.getElementById("taskPriority").value = task.priority;
-      document.getElementById("taskNotes").value = task.notes || "";
-      document.getElementById("modalTitle").textContent = "Edit Task";
-
-      // Update priority selector UI
-      priorityOptions.forEach((opt) => opt.classList.remove("active"));
-      document
-        .querySelector(`.priority-option[data-value="${task.priority}"]`)
-        .classList.add("active");
-    } else {
-      // Adding new task
-      taskForm.reset();
-      document.getElementById("modalTitle").textContent = "Add New Task";
-    }
-
-    taskModal.showModal();
-    document.getElementById("taskTitle").focus();
-  }
-
-  function closeTaskModal() {
-    taskModal.close();
-  }
-
-  function handleTaskSubmit(e) {
-    e.preventDefault();
-
-    const title = document.getElementById("taskTitle").value.trim();
-    const dueDate = document.getElementById("taskDueDate").value;
-    const priority = document.getElementById("taskPriority").value;
-    const notes = document.getElementById("taskNotes").value.trim();
-
-    if (!title) {
-      showToast("Task title is required");
-      return;
-    }
-
-    const taskData = {
-      id: Date.now().toString(),
-      title,
-      dueDate,
-      priority,
-      notes,
-      completed: false,
-      createdAt: new Date().toISOString(),
-    };
-
-    // Check if we're editing an existing task
-    const existingTaskIndex = tasks.findIndex(
-      (t) => t.id === taskModal.dataset.taskId
-    );
-    if (existingTaskIndex !== -1) {
-      tasks[existingTaskIndex] = { ...tasks[existingTaskIndex], ...taskData };
-      showToast("Task updated successfully");
-    } else {
-      tasks.unshift(taskData);
-      showToast("Task added successfully");
-    }
-
-    saveTasks();
-    closeTaskModal();
-    renderTasks();
-  }
-
-  function toggleTaskComplete(taskId) {
-    const taskIndex = tasks.findIndex((t) => t.id === taskId);
-    if (taskIndex !== -1) {
-      tasks[taskIndex].completed = !tasks[taskIndex].completed;
-      saveTasks();
-      renderTasks();
-      showToast(
-        `Task marked as ${tasks[taskIndex].completed ? "completed" : "pending"}`
-      );
-    }
-  }
-
-  function showDeleteConfirmation(taskId) {
-    taskToDelete = taskId;
-    confirmModal.showModal();
-  }
-
-  function vibrate() {
-  if ('vibrate' in navigator) {
-    // Short pulse for success, pattern for warnings
-    navigator.vibrate(navigator.vibrate ? 
-      [50, 30, 50] : // Pattern for important actions
-      50); // Single pulse for regular actions
-  }
-}
-
-  // Modify the confirmDelete function:
-  function confirmDelete() {
-    if (taskToDelete) {
-      vibrate();
-      const deletedTask = tasks.find((t) => t.id === taskToDelete);
-      tasks = tasks.filter((task) => task.id !== taskToDelete);
-      saveTasks();
-      renderTasks();
-      showUndoToast("Task deleted", deletedTask); // Updated to use undo toast
-      taskToDelete = null;
-    }
-    confirmModal.close();
-  }
-
   function saveTasks() {
     localStorage.setItem("tasks", JSON.stringify(tasks));
   }
 
-  // Modify the applyTheme function:
+  function showToast(message) {
+    toast.textContent = message;
+    toast.classList.add("show");
+
+    setTimeout(() => {
+      toast.classList.remove("show");
+    }, 3000);
+  }
+
+  function vibrate() {
+    if ("vibrate" in navigator) {
+      navigator.vibrate(50);
+    }
+  }
+
+  // Theme Functions
   function applyTheme() {
-    // Check for system preference
     const systemPrefersDark = window.matchMedia(
       "(prefers-color-scheme: dark)"
     ).matches;
@@ -339,12 +420,10 @@ document.addEventListener("DOMContentLoaded", () => {
     document.documentElement.setAttribute("data-theme", theme);
     updateThemeIcon(theme);
 
-    // Watch for system theme changes
     window
       .matchMedia("(prefers-color-scheme: dark)")
       .addEventListener("change", (e) => {
         if (!localStorage.getItem("theme")) {
-          // Only auto-change if no manual preference
           const newTheme = e.matches ? "dark" : "light";
           document.documentElement.setAttribute("data-theme", newTheme);
           updateThemeIcon(newTheme);
@@ -352,12 +431,10 @@ document.addEventListener("DOMContentLoaded", () => {
       });
   }
 
-  // Update toggleTheme to store null when matching system:
   function toggleTheme() {
     const currentTheme = document.documentElement.getAttribute("data-theme");
     let newTheme = currentTheme === "dark" ? "light" : "dark";
 
-    // Check if we're matching system preference
     const systemPrefersDark = window.matchMedia(
       "(prefers-color-scheme: dark)"
     ).matches;
@@ -365,7 +442,7 @@ document.addEventListener("DOMContentLoaded", () => {
       (newTheme === "dark" && systemPrefersDark) ||
       (newTheme === "light" && !systemPrefersDark)
     ) {
-      localStorage.removeItem("theme"); // Use system preference
+      localStorage.removeItem("theme");
     } else {
       localStorage.setItem("theme", newTheme);
     }
@@ -377,49 +454,5 @@ document.addEventListener("DOMContentLoaded", () => {
   function updateThemeIcon(theme) {
     const icon = themeToggle.querySelector("i");
     icon.className = theme === "dark" ? "fas fa-sun" : "fas fa-moon";
-  }
-
-  // Replace showToast function and add:
-  let undoTimeout;
-  let lastDeletedTask = null;
-
-  function showUndoToast(message, task) {
-    clearTimeout(undoTimeout);
-    lastDeletedTask = task;
-
-    const toast = document.createElement("div");
-    toast.className = "undo-toast show";
-    toast.innerHTML = `
-    <span>${message}</span>
-    <button id="undoDelete">Undo</button>
-  `;
-
-    // Remove any existing toasts
-    document.querySelectorAll(".undo-toast").forEach((el) => el.remove());
-    document.body.appendChild(toast);
-
-    // Set up undo button
-    document.getElementById("undoDelete").addEventListener("click", () => {
-      undoDelete();
-      toast.remove();
-    });
-
-    // Auto-dismiss after 5 seconds
-    undoTimeout = setTimeout(() => {
-      toast.remove();
-      lastDeletedTask = null;
-    }, 5000);
-  }
-
-  function undoDelete() {
-    if (lastDeletedTask) {
-      tasks.unshift(lastDeletedTask);
-      saveTasks();
-      renderTasks();
-      showToast("Task restored");
-      lastDeletedTask = null;
-      // Add to undoDelete function:
-      scrollTo(0, 0); // Scroll to top where restored task appears
-    }
   }
 });
